@@ -15,6 +15,7 @@ dependencies:
   vsc_address_lookup_field:
     path: ..
   flutter_dotenv: ^5.0.2
+  url_launcher: ^6.1.2
 
 dev_dependencies:
   flutter_test:

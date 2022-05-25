@@ -2,20 +2,32 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
+import 'package:google_place/google_place.dart';
 
+/// A field which provides autocomplete of street address information via the
+/// Google Places API.
 class VscAddressLookupField extends StatefulWidget {
   const VscAddressLookupField({
     Key? key,
     required this.googlePlacesApiKey,
     required this.poweredByGoogleLogo,
+    required this.onSelected,
+    this.onMapRequested,
     this.textFieldConfiguration = const TextFieldConfiguration(),
     this.readOnly = false,
     this.initialValue,
+    this.maxOptionsWidth = 480,
   }) : super(key: key);
 
   final String googlePlacesApiKey;
   final bool readOnly;
   final String? initialValue;
+  final void Function(Address) onSelected;
+  final VoidCallback? onMapRequested;
+  final double? maxOptionsWidth;
+
+  /// You must supply a logo for the search results. See
+  /// https://developers.google.com/maps/documentation/places/web-service/policies#logo_requirements.
   final Widget poweredByGoogleLogo;
 
   /// The configuration of the [TextField](https://docs.flutter.io/flutter/material/TextField-class.html)
@@ -24,39 +36,184 @@ class VscAddressLookupField extends StatefulWidget {
 
   @override
   State<VscAddressLookupField> createState() => _VscAddressLookupFieldState();
+
+  static Uri createGoogleMapsUrl({
+    String? streetAddress,
+    String? city,
+    String? stateOrProvince,
+    String? postalCode,
+    String? countryCode,
+  }) {
+    final parts = <String>[];
+    if (streetAddress != null) parts.add(streetAddress);
+    if (city != null) parts.add(city);
+    if (stateOrProvince != null) parts.add(stateOrProvince);
+    if (postalCode != null) parts.add(postalCode);
+    if (countryCode != null) parts.add(countryCode);
+    final query = parts.join(',');
+    return Uri.https('maps.google.com', '', {'q': query});
+  }
 }
 
 class _VscAddressLookupFieldState extends State<VscAddressLookupField> {
-  Uuid? _sessionToken;
+  static const Uuid _uuid = Uuid();
 
-  List<_AutocompleteResult> _results = [
-    _AutocompleteResult('value1'),
-    _AutocompleteResult('value2'),
-  ];
+  late final TextEditingController _textEditingController =
+      widget.textFieldConfiguration.controller ?? TextEditingController();
+  late final GooglePlace _googlePlace = GooglePlace(widget.googlePlacesApiKey);
+  String? _sessionToken;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialValue != null) {
+      _textEditingController.text = widget.initialValue!;
+    }
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+    _textEditingController.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return RawAutocomplete<_AutocompleteResult>(
-      displayStringForOption: (result) => result.toString(),
+      focusNode: widget.textFieldConfiguration.focusNode ?? FocusNode(),
+      textEditingController: _textEditingController,
+      displayStringForOption: (result) => result.optionString,
       optionsViewBuilder: (context, onSelected, options) {
         return _AutocompleteOptions<_AutocompleteResult>(
-          displayStringForOption: (result) => result.toString(),
+          displayStringForOption: (result) => result.optionString,
           onSelected: onSelected,
           options: options,
           poweredByGoogleLogo: widget.poweredByGoogleLogo,
+          maxOptionsWidth: widget.maxOptionsWidth,
         );
       },
-      optionsBuilder: (TextEditingValue textEditingValue) {
-        if (textEditingValue.text == '') {
-          return const Iterable<_AutocompleteResult>.empty();
-        }
-        return _results;
-      },
-      onSelected: (_AutocompleteResult selection) {
-        debugPrint('You just selected $selection');
-      },
+      optionsBuilder: (textEditingValue) => _search(textEditingValue.text),
+      onSelected: _onSelected,
       fieldViewBuilder: _buildFieldView,
     );
+  }
+
+  /// Search for autocomplete results.
+  Future<Iterable<_AutocompleteResult>> _search(String searchString) async {
+    if (searchString.trim().isEmpty) {
+      return const [];
+    }
+
+    _sessionToken ??= _uuid.v4().toString();
+
+    final results = await _googlePlace.autocomplete
+        .get(searchString, sessionToken: _sessionToken);
+    if (results == null ||
+        results.status != 'OK' ||
+        results.predictions == null ||
+        results.predictions!.isEmpty) {
+      return const [];
+    }
+
+    return results.predictions!
+        .map((prediction) => _AutocompleteResult(prediction));
+  }
+
+  Future<void> _onSelected(_AutocompleteResult selectedResult) async {
+    final finalSessionToken = _sessionToken!;
+    // Once we get the details, we have to clear the session token,
+    // otherwise we'll get charged per request.
+    _sessionToken = null;
+
+    // Get the address components from Place Details.
+    final result = await _googlePlace.details.get(
+        selectedResult.prediction.placeId!,
+        fields: 'address_component,url',
+        sessionToken: finalSessionToken);
+    if (result == null ||
+        result.status != 'OK' ||
+        result.result?.addressComponents == null) {
+      // Failed. Don't set anything else for the field.
+      return;
+    }
+
+    final addressComponents = result.result!.addressComponents!;
+
+    // Sample components:
+    // 0 = {AddressComponent}
+    // longName = "123"
+    // shortName = "123"
+    // types = {CastList} [street_number]
+    // 1 = {AddressComponent}
+    // longName = "Rushmore Court"
+    // shortName = "Rushmore Ct"
+    // types = {CastList} [route]
+    // 2 = {AddressComponent}
+    // longName = "Minneapolis"
+    // shortName = "Minneapolis"
+    // types = {CastList} [locality, political]
+    // 3 = {AddressComponent}
+    // longName = "Happenin County"
+    // shortName = "Happenin County"
+    // types = {CastList} [administrative_area_level_2, political]
+    // 4 = {AddressComponent}
+    // longName = "Minnesota"
+    // shortName = "MN"
+    // types = {CastList} [administrative_area_level_1, political]
+    // 5 = {AddressComponent}
+    // longName = "United States"
+    // shortName = "US"
+    // types = {CastList} [country, political]
+    // 6 = {AddressComponent}
+    // longName = "55306"
+    // shortName = "55306"
+    // types = {CastList} [postal_code]
+    // 7 = {AddressComponent}
+    // longName = "6360"
+    // shortName = "6360"
+    // types = {CastList} [postal_code_suffix]
+    final streetNumber =
+        _getAddressComponent(addressComponents, 'street_number');
+    final route = _getAddressComponent(addressComponents, 'route');
+    final locality = _getAddressComponent(addressComponents, 'locality');
+    final admin1 =
+        _getAddressComponent(addressComponents, 'administrative_area_level_1');
+    final admin2 =
+        _getAddressComponent(addressComponents, 'administrative_area_level_2');
+    final country = _getAddressComponent(addressComponents, 'country');
+    var postalCode = _getAddressComponent(addressComponents, 'postal_code');
+    final postalCodeSuffix =
+        _getAddressComponent(addressComponents, 'postal_code_suffix');
+
+    final streetAddress =
+        '${streetNumber ?? ''}${streetNumber == null ? '' : ' '}${route ?? ''}';
+    if (country == 'US') {
+      // Right now, this is the only suffix we know how to handle
+      if (postalCode != null && postalCodeSuffix != null) {
+        postalCode = '$postalCode-$postalCodeSuffix';
+      }
+    }
+
+    final address =
+        Address(streetAddress, locality, admin1, admin2, postalCode, country);
+    _textEditingController.text = streetAddress;
+    // We have to do setState() here to force the component to rebuild, otherwise just
+    // setting the textEditingController.text will cause the autocomplete popup to reopen.
+    setState(() {});
+    widget.onSelected(address);
+  }
+
+  static String? _getAddressComponent(
+    List<AddressComponent> components,
+    String type, {
+    bool shortName = true,
+  }) {
+    final matches = components
+        .where((component) => component.types?.contains(type) ?? false);
+    if (matches.isEmpty) {
+      return null;
+    }
+    return shortName ? matches.first.shortName : matches.first.longName;
   }
 
   Widget _buildFieldView(
@@ -69,12 +226,14 @@ class _VscAddressLookupFieldState extends State<VscAddressLookupField> {
       controller: textEditingController,
       decoration: widget.textFieldConfiguration.decoration.copyWith(
         errorText: widget.textFieldConfiguration.decoration.errorText,
-        suffixIcon: InkResponse(
-          radius: 24,
-          canRequestFocus: false,
-          child: const Icon(Icons.place),
-          onTap: () {},
-        ),
+        suffixIcon: widget.onMapRequested == null
+            ? null
+            : InkResponse(
+                radius: 24,
+                canRequestFocus: true,
+                onTap: widget.onMapRequested,
+                child: const Icon(Icons.place),
+              ),
       ),
       style: widget.textFieldConfiguration.style,
       textAlign: widget.textFieldConfiguration.textAlign,
@@ -109,12 +268,40 @@ class _VscAddressLookupFieldState extends State<VscAddressLookupField> {
 }
 
 class _AutocompleteResult {
-  String value;
+  AutocompletePrediction prediction;
 
-  _AutocompleteResult(this.value);
+  _AutocompleteResult(this.prediction);
 
-  @override
-  String toString() => value;
+  String get optionString => prediction.description ?? 'Unknown';
+}
+
+class Address {
+  Address(this.streetAddress, this.locality, this.administrativeAreaLevel1,
+      this.administrativeAreaLevel2, this.postalCode, this.countryCode);
+
+  /// The street address, e.g. "123 Anywhere St".
+  String? streetAddress;
+
+  /// The locality, typically the city.
+  String? locality;
+
+  /// Alias for [locality].
+  String? get city => locality;
+
+  /// The first administrative level, typically the state, province, or prefecture.
+  String? administrativeAreaLevel1;
+
+  /// Alias for [administrativeAreaLevel1];
+  String? get state => administrativeAreaLevel1;
+
+  /// The second administrative level, typically the county in the USA.
+  String? administrativeAreaLevel2;
+
+  /// Postal code. In the USA, this will include the ZIP+4 if it is provided.
+  String? postalCode;
+
+  /// ISO 3166-1 alpha-2 two letter country code.
+  String? countryCode;
 }
 
 // From autocomplete.dart so that we can include the required "Powered By Google" logo.
@@ -125,6 +312,7 @@ class _AutocompleteOptions<T extends Object> extends StatelessWidget {
     required this.onSelected,
     required this.options,
     required this.poweredByGoogleLogo,
+    this.maxOptionsWidth = 480,
   }) : super(key: key);
 
   final AutocompleteOptionToString<T> displayStringForOption;
@@ -132,7 +320,8 @@ class _AutocompleteOptions<T extends Object> extends StatelessWidget {
   final AutocompleteOnSelected<T> onSelected;
 
   final Iterable<T> options;
-  final double maxOptionsHeight = 200.0;
+  final double maxOptionsHeight = 300.0;
+  final double? maxOptionsWidth;
   final Widget poweredByGoogleLogo;
 
   @override
@@ -147,33 +336,37 @@ class _AutocompleteOptions<T extends Object> extends StatelessWidget {
           children: [
             ConstrainedBox(
               constraints: BoxConstraints(maxHeight: maxOptionsHeight),
-              child: ListView.builder(
-                padding: EdgeInsets.zero,
-                shrinkWrap: true,
-                itemCount: options.length,
-                itemBuilder: (BuildContext context, int index) {
-                  final T option = options.elementAt(index);
-                  return InkWell(
-                    onTap: () {
-                      onSelected(option);
-                    },
-                    child: Builder(builder: (BuildContext context) {
-                      final bool highlight =
-                          AutocompleteHighlightedOption.of(context) == index;
-                      if (highlight) {
-                        SchedulerBinding.instance
-                            .addPostFrameCallback((Duration timeStamp) {
-                          Scrollable.ensureVisible(context, alignment: 0.5);
-                        });
-                      }
-                      return Container(
-                        color: highlight ? Theme.of(context).focusColor : null,
-                        padding: const EdgeInsets.all(16.0),
-                        child: Text(displayStringForOption(option)),
-                      );
-                    }),
-                  );
-                },
+              child: SizedBox(
+                width: maxOptionsWidth,
+                child: ListView.builder(
+                  padding: EdgeInsets.zero,
+                  shrinkWrap: true,
+                  itemCount: options.length,
+                  itemBuilder: (BuildContext context, int index) {
+                    final T option = options.elementAt(index);
+                    return InkWell(
+                      onTap: () {
+                        onSelected(option);
+                      },
+                      child: Builder(builder: (BuildContext context) {
+                        final bool highlight =
+                            AutocompleteHighlightedOption.of(context) == index;
+                        if (highlight) {
+                          SchedulerBinding.instance
+                              .addPostFrameCallback((Duration timeStamp) {
+                            Scrollable.ensureVisible(context, alignment: 0.5);
+                          });
+                        }
+                        return Container(
+                          color:
+                              highlight ? Theme.of(context).focusColor : null,
+                          padding: const EdgeInsets.all(16.0),
+                          child: Text(displayStringForOption(option)),
+                        );
+                      }),
+                    );
+                  },
+                ),
               ),
             ),
             poweredByGoogleLogo,
