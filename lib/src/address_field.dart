@@ -175,6 +175,7 @@ class _VscAddressLookupFieldState extends State<VscAddressLookupField> {
     final streetNumber =
         _getAddressComponent(addressComponents, 'street_number');
     final route = _getAddressComponent(addressComponents, 'route');
+    var subPremise = _getAddressComponent(addressComponents, 'subpremise');
     final locality = _getAddressComponent(addressComponents, 'locality');
     final admin1 =
         _getAddressComponent(addressComponents, 'administrative_area_level_1');
@@ -185,8 +186,18 @@ class _VscAddressLookupFieldState extends State<VscAddressLookupField> {
     final postalCodeSuffix =
         _getAddressComponent(addressComponents, 'postal_code_suffix');
 
-    final streetAddress =
+    var streetAddress =
         '${streetNumber ?? ''}${streetNumber == null ? '' : ' '}${route ?? ''}';
+    if (subPremise != null) {
+      // Handle "#101", "Apt 5", "Ste 232"
+      // If we can parse a raw number from subPremise, add a '#' to the front, else take it as-is.
+      if (int.tryParse(subPremise) != null) {
+        subPremise = '#$subPremise';
+      }
+
+      streetAddress += ' $subPremise';
+    }
+
     if (country == 'US') {
       // Right now, this is the only suffix we know how to handle
       if (postalCode != null && postalCodeSuffix != null) {
