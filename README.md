@@ -1,7 +1,4 @@
-This is VSC's address lookup field using mapbox.com.
-
-Some code originated from https://github.com/jamesblasco/address_field
-under the MIT License.
+This is VSC's address lookup field using the Google Places API.
 
 ---
 

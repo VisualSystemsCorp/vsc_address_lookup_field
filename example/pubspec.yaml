@@ -14,6 +14,7 @@ dependencies:
   cupertino_icons: ^1.0.4
   vsc_address_lookup_field:
     path: ..
+  flutter_dotenv: ^5.0.2
 
 dev_dependencies:
   flutter_test:
@@ -23,3 +24,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  assets:
+    - assets/
+    - .env
