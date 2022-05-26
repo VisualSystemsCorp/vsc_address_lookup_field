@@ -83,6 +83,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   height: 16,
                 ),
               ),
+              debugApiCalls: true,
             ),
             _vgap,
             Row(

@@ -3,6 +3,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 import 'package:google_place/google_place.dart';
+import 'package:vsc_address_lookup_field/src/debouncer.dart';
 
 /// A field which provides autocomplete of street address information via the
 /// Google Places API.
@@ -17,6 +18,8 @@ class VscAddressLookupField extends StatefulWidget {
     this.readOnly = false,
     this.initialValue,
     this.maxOptionsWidth = 480,
+    this.debounceDuration = const Duration(milliseconds: 500),
+    this.debugApiCalls = false,
   }) : super(key: key);
 
   final String googlePlacesApiKey;
@@ -26,6 +29,9 @@ class VscAddressLookupField extends StatefulWidget {
   final VoidCallback? onMapRequested;
   final double? maxOptionsWidth;
 
+  /// How long to wait after a keypress before calling the Google Places Autocomplete API.
+  final Duration debounceDuration;
+
   /// You must supply a logo for the search results. See
   /// https://developers.google.com/maps/documentation/places/web-service/policies#logo_requirements.
   final Widget poweredByGoogleLogo;
@@ -33,6 +39,8 @@ class VscAddressLookupField extends StatefulWidget {
   /// The configuration of the [TextField](https://docs.flutter.io/flutter/material/TextField-class.html)
   /// that the VscAddressLookupField widget displays
   final TextFieldConfiguration textFieldConfiguration;
+
+  final bool debugApiCalls;
 
   @override
   State<VscAddressLookupField> createState() => _VscAddressLookupFieldState();
@@ -58,30 +66,70 @@ class VscAddressLookupField extends StatefulWidget {
 class _VscAddressLookupFieldState extends State<VscAddressLookupField> {
   static const Uuid _uuid = Uuid();
 
+  /// This is the controller that the [RawAutocomplete] field listens to. The
+  /// value set in this controller is debounced from the value in [_textEditingController].
+  late final TextEditingController _autocompleteTextEditingController =
+      TextEditingController();
+
+  /// This is the controller that the [TextField] actually uses. We listen to it
+  /// for changes and forward the changes to [_autocompleteTextEditingController]
+  /// after a debounce period.
   late final TextEditingController _textEditingController =
       widget.textFieldConfiguration.controller ?? TextEditingController();
+
+  late final _autocompleteControllerDebouncer =
+      Debouncer(_updateAutocompleteController);
+
+  /// Track if the field is "dirty". We only perform a Places API Autocomplete call
+  /// if the field has physically changed. This prevents the overlay from opening
+  /// when the field has a value and just receives focus. The field is considered "dirty"
+  /// if the value changed since the last Autocomplete or Details API call.
+  bool _fieldIsDirty = false;
+  String _lastFieldValue = '';
+
+  late final _autocompleteFocusNode =
+      widget.textFieldConfiguration.focusNode ?? FocusNode();
+
   late final GooglePlace _googlePlace = GooglePlace(widget.googlePlacesApiKey);
   String? _sessionToken;
 
   @override
   void initState() {
     super.initState();
+
     if (widget.initialValue != null) {
       _textEditingController.text = widget.initialValue!;
     }
+
+    _autocompleteTextEditingController.text = _textEditingController.text;
+    _lastFieldValue = _textEditingController.text;
+    _fieldIsDirty = false;
+
+    // Hook up the autocomplete controller as a delegate to the primary one.
+    // Make sure to do this AFTER setting the value on _textEditingController.
+    _textEditingController.addListener(_autocompleteControllerListener);
+    // Field should not be dirty after it loses focus.
+    _autocompleteFocusNode.addListener(() {
+      if (!_autocompleteFocusNode.hasFocus) {
+        _resetFieldDirtyFlag();
+      }
+    });
   }
 
   @override
   void dispose() {
     super.dispose();
     _textEditingController.dispose();
+    _autocompleteTextEditingController.dispose();
+    _autocompleteControllerDebouncer.dispose();
+    _autocompleteFocusNode.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return RawAutocomplete<_AutocompleteResult>(
-      focusNode: widget.textFieldConfiguration.focusNode ?? FocusNode(),
-      textEditingController: _textEditingController,
+      focusNode: _autocompleteFocusNode,
+      textEditingController: _autocompleteTextEditingController,
       displayStringForOption: (result) => result.optionString,
       optionsViewBuilder: (context, onSelected, options) {
         return _AutocompleteOptions<_AutocompleteResult>(
@@ -98,13 +146,38 @@ class _VscAddressLookupFieldState extends State<VscAddressLookupField> {
     );
   }
 
+  void _autocompleteControllerListener() {
+    _autocompleteControllerDebouncer.trigger(widget.debounceDuration);
+  }
+
+  void _updateAutocompleteController() {
+    _fieldIsDirty = _textEditingController.text != _lastFieldValue;
+    _lastFieldValue = _textEditingController.text;
+    if (_fieldIsDirty) {
+      _autocompleteTextEditingController.value = _textEditingController.value;
+    }
+  }
+
+  void _resetFieldDirtyFlag() {
+    _fieldIsDirty = false;
+    // Clear RawAutocomplete's view of the text so it recalculates an empty
+    // set of values and does not display the overlay the next time focus is
+    // gained.
+    _autocompleteTextEditingController.text = '';
+  }
+
   /// Search for autocomplete results.
   Future<Iterable<_AutocompleteResult>> _search(String searchString) async {
-    if (searchString.trim().isEmpty) {
+    if (searchString.trim().isEmpty || !_fieldIsDirty) {
       return const [];
     }
 
+    _fieldIsDirty = false;
     _sessionToken ??= _uuid.v4().toString();
+    if (widget.debugApiCalls) {
+      debugPrint(
+          'Performing Google Places Autocomplete API request. Session=$_sessionToken');
+    }
 
     final results = await _googlePlace.autocomplete
         .get(searchString, sessionToken: _sessionToken);
@@ -124,6 +197,11 @@ class _VscAddressLookupFieldState extends State<VscAddressLookupField> {
     // Once we get the details, we have to clear the session token,
     // otherwise we'll get charged per request.
     _sessionToken = null;
+
+    if (widget.debugApiCalls) {
+      debugPrint(
+          'Performing Google Places Details API request. Session=$finalSessionToken');
+    }
 
     // Get the address components from Place Details.
     final result = await _googlePlace.details.get(
@@ -207,10 +285,16 @@ class _VscAddressLookupFieldState extends State<VscAddressLookupField> {
 
     final address =
         Address(streetAddress, locality, admin1, admin2, postalCode, country);
+
+    // Prevent the autocomplete controller from "hearing" this update, otherwise
+    // it will attempt another Places Autocomplete API call with a new session token.
+    // Doing this also prevents the autocomplete popup from reopening.
+    _textEditingController.removeListener(_autocompleteControllerListener);
     _textEditingController.text = streetAddress;
-    // We have to do setState() here to force the component to rebuild, otherwise just
-    // setting the textEditingController.text will cause the autocomplete popup to reopen.
-    setState(() {});
+    _lastFieldValue = _textEditingController.text;
+    _resetFieldDirtyFlag();
+    _textEditingController.addListener(_autocompleteControllerListener);
+
     widget.onSelected(address);
   }
 
@@ -234,7 +318,7 @@ class _VscAddressLookupFieldState extends State<VscAddressLookupField> {
       VoidCallback onFieldSubmitted) {
     return TextField(
       focusNode: focusNode,
-      controller: textEditingController,
+      controller: _textEditingController,
       decoration: widget.textFieldConfiguration.decoration.copyWith(
         errorText: widget.textFieldConfiguration.decoration.errorText,
         suffixIcon: widget.onMapRequested == null
