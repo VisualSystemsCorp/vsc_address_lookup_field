@@ -7,6 +7,13 @@ import 'package:vsc_address_lookup_field/src/debouncer.dart';
 
 /// A field which provides autocomplete of street address information via the
 /// Google Places API.
+///
+/// See also:
+/// - https://developers.google.com/maps/documentation/places/web-service/autocomplete
+/// - https://developers.google.com/maps/documentation/places/web-service/details
+/// - https://developers.google.com/maps/documentation/places/web-service/session-tokens
+/// - https://developers.google.com/maps/documentation/places/web-service/policies#logo_requirements.
+///
 class VscAddressLookupField extends StatefulWidget {
   const VscAddressLookupField({
     Key? key,
