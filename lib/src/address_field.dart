@@ -126,10 +126,17 @@ class _VscAddressLookupFieldState extends State<VscAddressLookupField> {
   @override
   void dispose() {
     super.dispose();
-    _textEditingController.dispose();
+    // Only dispose of _textEditingController if we created it.
+    if (_textEditingController != widget.textFieldConfiguration.controller) {
+      _textEditingController.dispose();
+    }
+
+    if (_autocompleteFocusNode != widget.textFieldConfiguration.focusNode) {
+      _autocompleteFocusNode.dispose();
+    }
+
     _autocompleteTextEditingController.dispose();
     _autocompleteControllerDebouncer.dispose();
-    _autocompleteFocusNode.dispose();
   }
 
   @override
