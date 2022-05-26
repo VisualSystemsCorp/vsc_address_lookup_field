@@ -114,7 +114,7 @@ class _VscAddressLookupFieldState extends State<VscAddressLookupField> {
 
     // Hook up the autocomplete controller as a delegate to the primary one.
     // Make sure to do this AFTER setting the value on _textEditingController.
-    _textEditingController.addListener(_autocompleteControllerListener);
+    _textEditingController.addListener(_textEditingControllerListener);
     // Field should not be dirty after it loses focus.
     _autocompleteFocusNode.addListener(() {
       if (!_autocompleteFocusNode.hasFocus) {
@@ -153,7 +153,7 @@ class _VscAddressLookupFieldState extends State<VscAddressLookupField> {
     );
   }
 
-  void _autocompleteControllerListener() {
+  void _textEditingControllerListener() {
     _autocompleteControllerDebouncer.trigger(widget.debounceDuration);
   }
 
@@ -192,6 +192,8 @@ class _VscAddressLookupFieldState extends State<VscAddressLookupField> {
         results.status != 'OK' ||
         results.predictions == null ||
         results.predictions!.isEmpty) {
+      debugPrint(
+          'Google Places Autocomplete API request failed. status=${results?.status}');
       return const [];
     }
 
@@ -219,6 +221,8 @@ class _VscAddressLookupFieldState extends State<VscAddressLookupField> {
         result.status != 'OK' ||
         result.result?.addressComponents == null) {
       // Failed. Don't set anything else for the field.
+      debugPrint(
+          'Google Places Details API request failed. status=${result?.status}');
       return;
     }
 
@@ -296,11 +300,11 @@ class _VscAddressLookupFieldState extends State<VscAddressLookupField> {
     // Prevent the autocomplete controller from "hearing" this update, otherwise
     // it will attempt another Places Autocomplete API call with a new session token.
     // Doing this also prevents the autocomplete popup from reopening.
-    _textEditingController.removeListener(_autocompleteControllerListener);
+    _textEditingController.removeListener(_textEditingControllerListener);
     _textEditingController.text = streetAddress;
     _lastFieldValue = _textEditingController.text;
     _resetFieldDirtyFlag();
-    _textEditingController.addListener(_autocompleteControllerListener);
+    _textEditingController.addListener(_textEditingControllerListener);
 
     widget.onSelected(address);
   }
