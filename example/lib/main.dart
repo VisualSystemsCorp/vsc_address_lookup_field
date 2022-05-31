@@ -76,11 +76,14 @@ class _MyHomePageState extends State<MyHomePage> {
                 decoration: const InputDecoration(labelText: 'Street Address'),
               ),
               googlePlacesApiKey: dotenv.get('API_KEY'),
-              poweredByGoogleLogo: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Image.asset(
-                  'assets/powered_by_google_on_white_hdpi.png',
-                  height: 16,
+              poweredByGoogleLogo: Align(
+                alignment: Alignment.centerRight,
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Image.asset(
+                    'assets/powered_by_google_on_white_hdpi.png',
+                    height: 16,
+                  ),
                 ),
               ),
               debugApiCalls: true,
