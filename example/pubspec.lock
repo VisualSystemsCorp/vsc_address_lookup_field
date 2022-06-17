@@ -96,9 +96,11 @@ packages:
   google_place:
     dependency: transitive
     description:
-      name: google_place
-      url: "https://pub.dartlang.org"
-    source: hosted
+      path: "."
+      ref: HEAD
+      resolved-ref: "0376d3b49e17812aea9613ae3a5791cf2c29bbc2"
+      url: "https://github.com/dsyrstad/google_place.git"
+    source: git
     version: "0.4.7"
   http:
     dependency: transitive

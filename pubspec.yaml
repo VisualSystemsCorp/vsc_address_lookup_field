@@ -10,7 +10,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  google_place: ^0.4.7
+  google_place:
+    git: https://github.com/dsyrstad/google_place.git
   uuid: ^3.0.6
 
 dev_dependencies:

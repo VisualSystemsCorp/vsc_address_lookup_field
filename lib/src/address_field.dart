@@ -27,6 +27,7 @@ class VscAddressLookupField extends StatefulWidget {
     this.maxOptionsWidth = 480,
     this.debounceDuration = const Duration(milliseconds: 500),
     this.debugApiCalls = false,
+    this.proxyUrl,
   }) : super(key: key);
 
   final String googlePlacesApiKey;
@@ -35,6 +36,7 @@ class VscAddressLookupField extends StatefulWidget {
   final void Function(Address) onSelected;
   final VoidCallback? onMapRequested;
   final double? maxOptionsWidth;
+  final String? proxyUrl;
 
   /// How long to wait after a keypress before calling the Google Places Autocomplete API.
   final Duration debounceDuration;
@@ -97,7 +99,10 @@ class _VscAddressLookupFieldState extends State<VscAddressLookupField> {
   late final _autocompleteFocusNode =
       widget.textFieldConfiguration.focusNode ?? FocusNode();
 
-  late final GooglePlace _googlePlace = GooglePlace(widget.googlePlacesApiKey);
+  late final GooglePlace _googlePlace = GooglePlace(
+    widget.googlePlacesApiKey,
+    proxyUrl: widget.proxyUrl,
+  );
   String? _sessionToken;
 
   @override

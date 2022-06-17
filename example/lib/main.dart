@@ -76,6 +76,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 decoration: const InputDecoration(labelText: 'Street Address'),
               ),
               googlePlacesApiKey: dotenv.get('API_KEY'),
+              proxyUrl: dotenv.maybeGet('PROXY_URL'),
               poweredByGoogleLogo: Align(
                 alignment: Alignment.centerRight,
                 child: Padding(
