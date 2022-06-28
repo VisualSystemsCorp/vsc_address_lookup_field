@@ -5,6 +5,9 @@ import 'package:uuid/uuid.dart';
 import 'package:google_place/google_place.dart';
 import 'package:vsc_address_lookup_field/src/debouncer.dart';
 
+@visibleForTesting
+final autocompleteOptionsKey = UniqueKey();
+
 /// A field which provides autocomplete of street address information via the
 /// Google Places API.
 ///
@@ -152,6 +155,7 @@ class _VscAddressLookupFieldState extends State<VscAddressLookupField> {
       displayStringForOption: (result) => result.optionString,
       optionsViewBuilder: (context, onSelected, options) {
         return _AutocompleteOptions<_AutocompleteResult>(
+          key: autocompleteOptionsKey,
           displayStringForOption: (result) => result.optionString,
           onSelected: onSelected,
           options: options,
@@ -438,7 +442,6 @@ class _AutocompleteOptions<T extends Object> extends StatelessWidget {
   final AutocompleteOnSelected<T> onSelected;
 
   final Iterable<T> options;
-  final double maxOptionsHeight = 300.0;
   final double? maxOptionsWidth;
   final Widget poweredByGoogleLogo;
 
@@ -450,8 +453,8 @@ class _AutocompleteOptions<T extends Object> extends StatelessWidget {
         elevation: 4.0,
         child: ConstrainedBox(
           constraints: BoxConstraints(
-              maxWidth: maxOptionsWidth ?? double.infinity,
-              maxHeight: maxOptionsHeight),
+            maxWidth: maxOptionsWidth ?? double.infinity,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
