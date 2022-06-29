@@ -1,19 +1,9 @@
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mockito/annotations.dart';
-import 'package:mockito/mockito.dart';
+import 'package:google_place/google_place.dart';
 import 'package:vsc_address_lookup_field/src/address_field.dart';
 
-@GenerateMocks([
-  HttpClient,
-  HttpClientRequest,
-  HttpClientResponse,
-  HttpHeaders,
-])
-import 'vsc_address_lookup_field_test.mocks.dart';
 
 const label = 'label';
 final fieldFinder = find.byType(VscAddressLookupField);
@@ -27,36 +17,13 @@ final autocompletePopupFinder = find.byKey(autocompleteOptionsKey);
 final logoKey = UniqueKey();
 final focusButtonKey = UniqueKey();
 final focusButtonFinder = find.byKey(focusButtonKey);
-final mockHttpClient = MockHttpClient();
 final onSelectedAddresses = <Address>[];
+var onMapRequestedCount = 0;
 
 void main() {
-  // TODO -
-  //  - no map icon
-
   setUp(() {
     onSelectedAddresses.clear();
-    HttpOverrides.global = MockHttpOverrides();
-
-    when(mockHttpClient.openUrl(any, any)).thenAnswer((invocation) {
-      final url = invocation.positionalArguments[1] as Uri;
-      final body = url.path.contains('/details/')
-          ? detailsResponseBody
-          : autocompleteResponseBody;
-      final request = MockHttpClientRequest();
-      final response = MockHttpClientResponse();
-      when(request.close()).thenAnswer((_) => Future.value(response));
-      when(request.addStream(any)).thenAnswer((_) async => null);
-      when(response.headers).thenReturn(MockHttpHeaders());
-      when(response.handleError(any, test: anyNamed('test')))
-          .thenAnswer((_) => Stream.value(body));
-      when(response.statusCode).thenReturn(200);
-      when(response.reasonPhrase).thenReturn('OK');
-      when(response.contentLength).thenReturn(body.length);
-      when(response.isRedirect).thenReturn(false);
-      when(response.persistentConnection).thenReturn(false);
-      return Future.value(request);
-    });
+    onMapRequestedCount = 0;
   });
 
   testWidgets('displays properly', (tester) async {
@@ -92,6 +59,71 @@ void main() {
 
     await expectLater(
         find.byType(MaterialApp), matchesGoldenFile('goldens/post_lookup.png'));
+
+    // Tabbing away from the field should close the popup
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pumpAndSettle();
+
+    // Autocomplete popup should no longer be displayed
+    expect(autocompletePopupFinder, findsNothing);
+  });
+
+  testWidgets('displays properly without map icon', (tester) async {
+    await tester.pumpField(useMapIcon: false);
+
+    expect(labelFinder, findsOneWidget);
+    expect(mapsIconFinder, findsNothing);
+    expect(autocompletePopupFinder, findsNothing);
+
+    await tester.showKeyboard(fieldFinder); // Focuses
+    await tester.pumpAndSettle();
+
+    // Popup should still not be visible after focusing.
+    expect(autocompletePopupFinder, findsNothing);
+
+    await tester.enterText(fieldFinder, '1600 pennsylvania ave NW');
+    // Wait for debounce and popup.
+    await tester.pumpAndSettle(const Duration(seconds: 1));
+
+    // Autocomplete popup should now be displayed
+    expect(autocompletePopupFinder, findsOneWidget);
+  });
+
+  testWidgets('works properly when read-only', (tester) async {
+    await tester.pumpField(readOnly: true);
+
+    expect(labelFinder, findsOneWidget);
+    expect(mapsIconFinder, findsOneWidget);
+    expect(autocompletePopupFinder, findsNothing);
+
+    await tester.showKeyboard(fieldFinder); // Focuses
+    await tester.pumpAndSettle();
+
+    // Popup should still not be visible after focusing.
+    expect(autocompletePopupFinder, findsNothing);
+
+    await tester.enterText(fieldFinder, '1600 pennsylvania ave NW');
+    // Wait for debounce and possible popup. We don't expect a popup because it's read-only.
+    await tester.pumpAndSettle(const Duration(seconds: 1));
+
+    // Autocomplete popup should NOT be displayed
+    expect(autocompletePopupFinder, findsNothing);
+
+    expect(tester.widget<TextField>(textFieldFinder).controller!.text, '');
+  });
+
+  testWidgets('displays initialValue', (tester) async {
+    const initialValue = '100 Initial Address';
+    await tester.pumpField(initialValue: initialValue);
+
+    expect(labelFinder, findsOneWidget);
+    expect(mapsIconFinder, findsOneWidget);
+    expect(autocompletePopupFinder, findsNothing);
+
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<TextField>(textFieldFinder).controller!.text,
+        initialValue);
   });
 
   testWidgets('calls onSelected when selection tapped', (tester) async {
@@ -128,36 +160,91 @@ void main() {
     expect(addr.postalCode, '55806');
     expect(addr.countryCode, 'US');
   });
+
+  testWidgets('calls onMapRequested when map icon tapped', (tester) async {
+    await tester.pumpField();
+
+    expect(onMapRequestedCount, 0);
+    expect(mapsIconFinder, findsOneWidget);
+
+    await tester.tap(mapsIconFinder);
+    await tester.pumpAndSettle();
+
+    expect(onMapRequestedCount, 1);
+  });
+
+  testWidgets('calls onMapRequested when map icon tapped when read-only',
+      (tester) async {
+    await tester.pumpField(readOnly: true);
+
+    expect(onMapRequestedCount, 0);
+    expect(mapsIconFinder, findsOneWidget);
+
+    await tester.tap(mapsIconFinder);
+    await tester.pumpAndSettle();
+
+    expect(onMapRequestedCount, 1);
+  });
+
+  test('createGoogleMapsUrl() returns proper URL', () async {
+    final url = VscAddressLookupField.createGoogleMapsUrl(
+      streetAddress: '701 N 1st Ave W',
+      city: 'Duluth',
+      stateOrProvince: 'MN',
+      postalCode: '55806',
+      countryCode: 'US',
+    );
+
+    expect(url.toString(),
+        'https://maps.google.com?q=701+N+1st+Ave+W%2CDuluth%2CMN%2C55806%2CUS');
+  });
 }
+
+Future<AutocompleteResponse?> _placesAutocompleteFetchFn(
+    String searchString, {
+    String? sessionToken,
+    int? offset,
+    LatLon? origin,
+    LatLon? location,
+    int? radius,
+    String? region,
+    String? language,
+    String? types,
+    List<Component>? components,
+    bool strictbounds = false,
+    }) async => autocompleteResponseBody;
+
+/// Function to fetch the Place Details results. This can simply forward to
+/// [GooglePlace.details.get()], or you can provide your own implementation.
+ Future<DetailsResponse?> _placesDetailsFetchFn(
+    String placeId, {
+    String? language,
+    String? region,
+    String? sessionToken,
+    String? fields,
+    }) async => detailsResponseBody;
 
 extension MoreWidgetTester on WidgetTester {
   TextField getTextField() => widget(textFieldFinder);
 
-  Future<void> pumpField() async {
+  Future<void> pumpField({
+    bool readOnly = false,
+    bool useMapIcon = true,
+    String? initialValue,
+  }) async {
     await pumpWidgetWithHarness(VscAddressLookupField(
+      initialValue: initialValue,
       textFieldConfiguration: const TextFieldConfiguration(
           decoration: InputDecoration(
         label: Text(label),
       )),
-      onMapRequested: () {},
+      onMapRequested: useMapIcon ? () => ++onMapRequestedCount : null,
       onSelected: (address) => onSelectedAddresses.add(address),
-      googlePlacesApiKey: '',
+      placesAutocompleteFetchFn: _placesAutocompleteFetchFn,
+      placesDetailsFetchFn: _placesDetailsFetchFn,
       poweredByGoogleLogo: buildLogo(),
+      readOnly: readOnly,
     ));
-  }
-
-  Future<void> pumpFieldNoMapIcon() async {
-    await pumpWidgetWithHarness(
-      VscAddressLookupField(
-        textFieldConfiguration: const TextFieldConfiguration(
-            decoration: InputDecoration(
-          label: Text(label),
-        )),
-        onSelected: (address) {},
-        googlePlacesApiKey: '',
-        poweredByGoogleLogo: buildLogo(),
-      ),
-    );
   }
 
   Widget buildLogo() {
@@ -194,15 +281,8 @@ extension MoreWidgetTester on WidgetTester {
   }
 }
 
-class MockHttpOverrides extends HttpOverrides {
-  @override
-  HttpClient createHttpClient(SecurityContext? context) {
-    return mockHttpClient;
-  }
-}
-
 // https://maps.googleapis.com/maps/api/place/autocomplete/json?input=701+N+1st+Ave&key=...&sessionToken=...
-final autocompleteResponseBody = utf8.encode(jsonEncode({
+final autocompleteResponseBody = AutocompleteResponse.fromJson({
   "predictions": [
     {
       "description": "701 North 1st Avenue, Minneapolis, MN, USA",
@@ -329,10 +409,10 @@ final autocompleteResponseBody = utf8.encode(jsonEncode({
     }
   ],
   "status": "OK"
-}));
+});
 
 // https://maps.googleapis.com/maps/api/place/details/json?place_id=...
-final detailsResponseBody = utf8.encode(jsonEncode({
+final detailsResponseBody = DetailsResponse.fromJson({
   "html_attributions": [],
   "result": {
     "address_components": [
@@ -381,4 +461,4 @@ final detailsResponseBody = utf8.encode(jsonEncode({
         "https://maps.google.com/?q=701+N+1st+Ave+W,+Duluth,+MN+55806,+USA&ftid=0x52ae52a356c327c5:0xd7b6150c5de6743f"
   },
   "status": "OK"
-}));
+});

@@ -16,6 +16,8 @@ dependencies:
     path: ..
   flutter_dotenv: ^5.0.2
   url_launcher: ^6.1.2
+  google_place:
+    git: https://github.com/dsyrstad/google_place.git
 
 dev_dependencies:
   flutter_test:

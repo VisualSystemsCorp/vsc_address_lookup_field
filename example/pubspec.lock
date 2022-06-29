@@ -94,7 +94,7 @@ packages:
     source: sdk
     version: "0.0.0"
   google_place:
-    dependency: transitive
+    dependency: "direct main"
     description:
       path: "."
       ref: HEAD

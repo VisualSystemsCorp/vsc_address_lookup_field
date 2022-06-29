@@ -11,6 +11,9 @@ final autocompleteOptionsKey = UniqueKey();
 /// A field which provides autocomplete of street address information via the
 /// Google Places API.
 ///
+/// See the example to see how to use [GooglePlace] with [placesAutocompleteFetchFn]
+/// and [placesDetailsFetchFn].
+///
 /// See also:
 /// - https://developers.google.com/maps/documentation/places/web-service/autocomplete
 /// - https://developers.google.com/maps/documentation/places/web-service/details
@@ -20,7 +23,8 @@ final autocompleteOptionsKey = UniqueKey();
 class VscAddressLookupField extends StatefulWidget {
   const VscAddressLookupField({
     Key? key,
-    required this.googlePlacesApiKey,
+    required this.placesAutocompleteFetchFn,
+    required this.placesDetailsFetchFn,
     required this.poweredByGoogleLogo,
     required this.onSelected,
     this.onMapRequested,
@@ -30,16 +34,14 @@ class VscAddressLookupField extends StatefulWidget {
     this.maxOptionsWidth = 480,
     this.debounceDuration = const Duration(milliseconds: 500),
     this.debugApiCalls = false,
-    this.proxyUrl,
   }) : super(key: key);
 
-  final String googlePlacesApiKey;
+  /// True if the field should be read-only.
   final bool readOnly;
   final String? initialValue;
   final void Function(Address) onSelected;
   final VoidCallback? onMapRequested;
   final double? maxOptionsWidth;
-  final String? proxyUrl;
 
   /// How long to wait after a keypress before calling the Google Places Autocomplete API.
   final Duration debounceDuration;
@@ -53,6 +55,32 @@ class VscAddressLookupField extends StatefulWidget {
   final TextFieldConfiguration textFieldConfiguration;
 
   final bool debugApiCalls;
+
+  /// Function to fetch the Place Autocomplete results. This can simply forward to
+  /// [GooglePlace.autocomplete.get()], or you can provide your own implementation.
+  final Future<AutocompleteResponse?> Function(
+    String searchString, {
+    String? sessionToken,
+    int? offset,
+    LatLon? origin,
+    LatLon? location,
+    int? radius,
+    String? region,
+    String? language,
+    String? types,
+    List<Component>? components,
+    bool strictbounds,
+  }) placesAutocompleteFetchFn;
+
+  /// Function to fetch the Place Details results. This can simply forward to
+  /// [GooglePlace.details.get()], or you can provide your own implementation.
+  final Future<DetailsResponse?> Function(
+    String placeId, {
+    String? language,
+    String? region,
+    String? sessionToken,
+    String? fields,
+  }) placesDetailsFetchFn;
 
   @override
   State<VscAddressLookupField> createState() => _VscAddressLookupFieldState();
@@ -102,10 +130,6 @@ class _VscAddressLookupFieldState extends State<VscAddressLookupField> {
   late final _autocompleteFocusNode =
       widget.textFieldConfiguration.focusNode ?? FocusNode();
 
-  late final GooglePlace _googlePlace = GooglePlace(
-    widget.googlePlacesApiKey,
-    proxyUrl: widget.proxyUrl,
-  );
   String? _sessionToken;
 
   @override
@@ -202,8 +226,8 @@ class _VscAddressLookupFieldState extends State<VscAddressLookupField> {
           'Performing Google Places Autocomplete API request. Session=$_sessionToken');
     }
 
-    final results = await _googlePlace.autocomplete
-        .get(searchString, sessionToken: _sessionToken);
+    final results = await widget.placesAutocompleteFetchFn(searchString,
+        sessionToken: _sessionToken);
     if (results == null ||
         results.status != 'OK' ||
         results.predictions == null ||
@@ -229,7 +253,7 @@ class _VscAddressLookupFieldState extends State<VscAddressLookupField> {
     }
 
     // Get the address components from Place Details.
-    final result = await _googlePlace.details.get(
+    final result = await widget.placesDetailsFetchFn(
         selectedResult.prediction.placeId!,
         fields: 'address_component,url',
         sessionToken: finalSessionToken);

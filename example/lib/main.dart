@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:vsc_address_lookup_field/vsc_address_lookup_field.dart';
+import 'package:google_place/google_place.dart';
 
 void main() async {
   await dotenv.load(fileName: '.env');
@@ -46,6 +47,10 @@ class _MyHomePageState extends State<MyHomePage> {
   final TextEditingController _stateController = TextEditingController();
   final TextEditingController _postalCodeController = TextEditingController();
   final TextEditingController _countryController = TextEditingController();
+  late final GooglePlace _googlePlace = GooglePlace(
+    dotenv.get('API_KEY'),
+    proxyUrl: dotenv.maybeGet('PROXY_URL'),
+  );
 
   @override
   void dispose() {
@@ -75,8 +80,8 @@ class _MyHomePageState extends State<MyHomePage> {
                 controller: _streetController,
                 decoration: const InputDecoration(labelText: 'Street Address'),
               ),
-              googlePlacesApiKey: dotenv.get('API_KEY'),
-              proxyUrl: dotenv.maybeGet('PROXY_URL'),
+              placesAutocompleteFetchFn: _googlePlace.autocomplete.get,
+              placesDetailsFetchFn: _googlePlace.details.get,
               poweredByGoogleLogo: Align(
                 alignment: Alignment.centerRight,
                 child: Padding(
