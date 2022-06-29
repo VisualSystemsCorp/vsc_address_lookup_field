@@ -98,7 +98,7 @@ packages:
     description:
       path: "."
       ref: HEAD
-      resolved-ref: "0376d3b49e17812aea9613ae3a5791cf2c29bbc2"
+      resolved-ref: e070df5f7cdc4dee8973f228506a42db9f9b1932
       url: "https://github.com/dsyrstad/google_place.git"
     source: git
     version: "0.4.7"
