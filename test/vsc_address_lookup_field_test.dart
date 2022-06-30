@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_place/google_place.dart';
 import 'package:vsc_address_lookup_field/src/address_field.dart';
 
-
 const label = 'label';
 final fieldFinder = find.byType(VscAddressLookupField);
 final labelFinder =
@@ -89,7 +88,7 @@ void main() {
     expect(autocompletePopupFinder, findsOneWidget);
   });
 
-  testWidgets('works properly when read-only', (tester) async {
+  testWidgets('does not allow entry when read-only', (tester) async {
     await tester.pumpField(readOnly: true);
 
     expect(labelFinder, findsOneWidget);
@@ -201,28 +200,30 @@ void main() {
 }
 
 Future<AutocompleteResponse?> _placesAutocompleteFetchFn(
-    String searchString, {
-    String? sessionToken,
-    int? offset,
-    LatLon? origin,
-    LatLon? location,
-    int? radius,
-    String? region,
-    String? language,
-    String? types,
-    List<Component>? components,
-    bool strictbounds = false,
-    }) async => autocompleteResponseBody;
+  String searchString, {
+  String? sessionToken,
+  int? offset,
+  LatLon? origin,
+  LatLon? location,
+  int? radius,
+  String? region,
+  String? language,
+  String? types,
+  List<Component>? components,
+  bool strictbounds = false,
+}) async =>
+    autocompleteResponseBody;
 
 /// Function to fetch the Place Details results. This can simply forward to
 /// [GooglePlace.details.get()], or you can provide your own implementation.
- Future<DetailsResponse?> _placesDetailsFetchFn(
-    String placeId, {
-    String? language,
-    String? region,
-    String? sessionToken,
-    String? fields,
-    }) async => detailsResponseBody;
+Future<DetailsResponse?> _placesDetailsFetchFn(
+  String placeId, {
+  String? language,
+  String? region,
+  String? sessionToken,
+  String? fields,
+}) async =>
+    detailsResponseBody;
 
 extension MoreWidgetTester on WidgetTester {
   TextField getTextField() => widget(textFieldFinder);
