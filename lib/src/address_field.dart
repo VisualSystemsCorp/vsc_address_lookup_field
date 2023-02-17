@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
-import 'package:uuid/uuid.dart';
 import 'package:google_place/google_place.dart';
+import 'package:queue/queue.dart';
+import 'package:uuid/uuid.dart';
 import 'package:vsc_address_lookup_field/src/debouncer.dart';
 
 @visibleForTesting
@@ -131,6 +132,7 @@ class _VscAddressLookupFieldState extends State<VscAddressLookupField> {
       widget.textFieldConfiguration.focusNode ?? FocusNode();
 
   String? _sessionToken;
+  final _searchQueue = Queue();
 
   @override
   void initState() {
@@ -213,8 +215,14 @@ class _VscAddressLookupFieldState extends State<VscAddressLookupField> {
     _autocompleteTextEditingController.text = '';
   }
 
-  /// Search for autocomplete results.
+  /// Search for autocomplete results. This will execute concurrent requests sequentially
+  /// so that earlier requests return their results before a later request, regardless of the API timing.
   Future<Iterable<_AutocompleteResult>> _search(String searchString) async {
+    return await _searchQueue.add(() => _searchWorker(searchString));
+  }
+
+  Future<Iterable<_AutocompleteResult>> _searchWorker(
+      String searchString) async {
     if (searchString.trim().isEmpty || !_fieldIsDirty) {
       return const [];
     }

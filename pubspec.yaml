@@ -12,6 +12,7 @@ dependencies:
     sdk: flutter
   google_place:
     git: https://github.com/dsyrstad/google_place.git
+  queue: ^3.1.0+2
   uuid: ^3.0.6
 
 dev_dependencies:

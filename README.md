@@ -1,5 +1,18 @@
 This is VSC's address lookup field using the Google Places API.
 
+
+You need to create an `example/assets/.env` containing:
+
+```
+API_KEY=xxxx
+PROXY_URL= <optional>
+```
+
+Where API_KEY is your Google Maps Places API key. PROXY_URL is optional but can be used to proxy 
+the request on the web to work-around CORS issues.
+
+You can copy `example/assets/.env.template` for an example.
+
 ---
 
 TODO: Put a short description of the package here that helps potential users
