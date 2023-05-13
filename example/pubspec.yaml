@@ -6,18 +6,20 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.0.0+1
 
 environment:
-  sdk: ">=2.17.1 <3.0.0"
+  sdk: ">=2.17.1 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
-  cupertino_icons: ^1.0.4
+  cupertino_icons: ^1.0.5
   vsc_address_lookup_field:
     path: ..
   flutter_dotenv: ^5.0.2
-  url_launcher: ^6.1.2
+  url_launcher: ^6.1.11
   google_place:
-    git: https://github.com/dsyrstad/google_place.git
+    git:
+      url: https://github.com/dsyrstad/google_place.git
+      ref: HEAD
 
 dev_dependencies:
   flutter_test:
